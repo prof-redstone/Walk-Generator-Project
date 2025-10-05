@@ -1,2 +1,26 @@
 //py -3.13 -m pip install folium
 //py -3.13 -m pip install osmnx
+
+
+Documentation OSMnx :
+👉 https://osmnx.readthedocs.io
+
+(explique comment manipuler graphes, ajouter des attributs, calculer des trajets)
+
+GraphML format :
+👉 GraphML Primer
+
+(pour comprendre la structure XML et modifier manuellement si besoin)
+
+NetworkX (lib de graphe sur laquelle repose OSMnx) :
+👉 https://networkx.org/documentation/stable/
+
+(tu peux ajouter tes propres poids, heuristiques, attributs personnalisés pour générer des chemins "intéressants").
+
+
+
+Exemple pour ajouter des infos plus tard :
+Si tu veux associer "nombre de bancs proches" à chaque arête :
+
+for u, v, k, data in G.edges(keys=True, data=True):
+    data["benches_nearby"] = 3  # valeur calculée depuis tes données Overpass
