@@ -1,7 +1,7 @@
 import osmnx as ox
 import folium
 
-#recupere les infos du graph avec toutes les rues et genere uin fichier html avec toutes les rues.
+#recupere les infos du graphe avec toutes les rues et genere un fichier html avec toutes les rues.
 
 def show_graph_interactive(graph_path="clermont_graph.graphml", output_map="map.html"):
     # Recharge le graphe
