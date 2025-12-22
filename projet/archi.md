@@ -21,7 +21,7 @@ projet/
     ├── data_acquisition/
     │   ├── download_network.py       # Téléchargement réseau routier
     │   ├── download_pois.py          # Téléchargement des pois
-    │   └── data_validator.py         # Vérifier intégrité des données (-voir l'utilité)
+    │   └── data_validator.py         # Vérifier intégrité des données (-voir l'utilité car directement dans les 2 autres fichiers) (graph connexe, pas noeuds deg = 0)
     │
     ├── preprocessing/
     │   ├── graph_builder.py          # Construit le graphe NetworkX
@@ -37,7 +37,7 @@ projet/
     ├── utils/
     │   ├── geometry.py               # Fonctions géométriques
     │   ├── distance.py               # Calculs de distances (pas forcement utile, aprox distance avec norme L2 (pytghagore))
-    │   └── scoring.py                # Produits scalaires SSV·UPV
+    │   └── scoring.py                # Produits scalaires SSV·UPV (pas forcement utile, très simple peut rester dans un autre fichier qui l'utilise)
     │
     └── visualization/
         ├── show_path.py              # pour afficher le chemin résultant, avec les points selectionné passant par le chemin.
