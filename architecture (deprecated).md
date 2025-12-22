@@ -1,3 +1,6 @@
+# deprecated ! 
+
+
 # Architecture du projet
 (important pour pas que ça parte dans tous les sens et que ça reste compréhensible pour tout le monde)
 
