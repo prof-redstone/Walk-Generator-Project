@@ -14,6 +14,8 @@ projet/
 │   │   ├── pois.pkl                  # Liste des POIs traités
 │   │   └── metadata.json             # Infos sur la zone, date de DL, etc.
 │   │
+│   ├── results/                      #Dossier contenant tous les fichiers de résultat d'execution de visualization (.html de folium -> carte interactive).
+│   │
 │   └── user_data/                    # Données utilisateur
 │       └── user_123_history.pkl      # Historique des chemins parcourus
 │

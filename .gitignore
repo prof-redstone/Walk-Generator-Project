@@ -1,0 +1,7 @@
+# Ignorer le dossier cache à la racine
+cache/
+
+# Ignorer tous les dossiers de cache Python
+**/__pycache__/
+*.py[cod]
+*$py.class
