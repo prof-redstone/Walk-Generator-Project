@@ -24,8 +24,8 @@ def project_coords(x, y, transformer):
     return lat, lon
 
 def show_full_graph(
+    save_path: str,
     graph_path: str = "projet/data/processed/graph.pkl",
-    save_path: str = "projet/data/processed/clermont_graph.html",
     show_fictif: bool = True,
     edge_color: str = "blue",
     edge_weight: float = 2,
@@ -40,7 +40,6 @@ def show_full_graph(
     
     # Initialiser le convertisseur de projection
     transformer = get_transformer()
-    #print(f"🌍 Conversion des coordonnées de {SOURCE_CRS} vers WGS84...")
 
     node_coords = {} # Stocke {node_id: (lat, lon)}
     lats = []
@@ -65,12 +64,10 @@ def show_full_graph(
     else:
         print("Impossible de centrer la carte !")
 
-    #print(f"📍 Centre calculé: ({center_lat:.4f}, {center_lon:.4f})")
     
     m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_start, tiles='OpenStreetMap', max_zoom=25)
 
     # 2. Ajouter les arêtes (avec géométrie précise si dispo)
-    #print("🎨 Ajout des arêtes...")
     edge_count = 0
     
     for u, v, data in G.edges(data=True):

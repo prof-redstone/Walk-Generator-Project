@@ -1,37 +1,86 @@
 # Walk-Generator-Project
 
-## Project Summary
+**Walk-Generator-Project** est un projet de génération intelligente de promenades urbaines, visant à proposer des itinéraires de marche **agréables, sûrs et personnalisés**, sous contrainte de **temps ou de distance**, plutôt que de simples chemins optimaux au sens géométrique.
 
-**Walk-Generator-Project** is an initiative to create a smart routing application that generates high-quality walking paths tailored to user-defined time or distance constraints. Unlike standard navigation, this project prioritizes the **enjoyability and safety** of the journey by selecting street segments based on aesthetic, cultural, and accessibility criteria.
-
----
-
-## Core Goals & Features
-
-The primary function is to transform a simple time or distance request into a curated walking experience.
-
-### Routing Capabilities
-* **Constraint-Based Generation:** Routes are precisely mapped to meet the user's requested duration or length.
-* **Flexible Pathing:** Supports generation of both **closed loops** (starting and ending at the same point) and **point-to-point paths** (A to B).
-* **Loop Optimization:** Paths are designed to avoid repetition and maximize the area covered, ensuring a diverse and engaging walk.
-
-### Street Quality Prioritization
-Routes are generated using a sophisticated scoring system that favors segments based on the following qualitative metrics:
-
-* **Aesthetics & Culture:** Presence of engaging architecture, greenery, and cultural points of interest.
-* **Safety & Serenity:** Streets with a high perceived sense of safety and calm.
-* **Accessibility:** Ease of travel, including consideration for individuals with mobility challenges (e.g., smooth paths, gentle slopes).
-* **Terrain:** Analysis of elevation changes (*dénivelé*) to match user preference.
+📍 Le projet s’adresse aussi bien aux **touristes découvrant une ville** qu’aux **habitants souhaitant explorer autrement leur environnement**, en favorisant la nouveauté et la qualité de l’expérience.
 
 ---
 
-## Technical Approach
+## 👥 Équipe & Encadrement
 
-### Street Scoring and Heuristics
-Each segment in the map network receives a dynamic quality assessment. This score is determined by a **heuristic model (likely a Neural Network)** that synthesizes various map data points (e.g., tree cover, building type, road width) and essential **user feedback** to accurately predict the walkability and appeal of a street.
+- **Auteurs** : Vivien Fleuriot, Tom Demagny  
+- **Encadrant** : Laurent Beaudou  
 
-### Data Strategy
-To train our quality model, we are compiling data from several sources:
-1.  **Open Source Mapping:** Leveraging existing map data with custom analysis and labeling.
-2.  **User Ratings:** Implementing client feedback mechanisms to rate walks, providing real-world validation.
-3.  **Curated Paths:** Integrating and analyzing known high-quality routes (e.g., popular trails, hiking paths) as a quality baseline.
+---
+
+## 🎯 Objectifs du projet
+
+Contrairement aux systèmes de navigation classiques, ce projet ne cherche **pas** le chemin le plus court, mais le **meilleur compromis** entre :
+
+- plaisir de la balade,
+- centres d’intérêt culturels et naturels,
+- sécurité et accessibilité,
+- respect strict d’une contrainte de temps ou de distance.
+
+Les objectifs principaux sont :
+
+- Générer des **chemins A → B** ou des **boucles** (A → A)
+- Respecter une durée cible (ex. 30 min, 2h ± tolérance)
+- Favoriser les rues agréables plutôt que les axes rapides
+- Éviter la répétition des segments
+- Encourager la **découverte** et la diversité des parcours
+
+---
+
+## 🧠 Philosophie algorithmique
+
+### Hypothèses clés
+
+1. **Optimalité locale**  
+   Dans l’espace des chemins urbains, il existe une grande quantité de chemins **localement optimaux** très proches les uns des autres.  
+   → Un chemin aléatoire bien raffiné est souvent quasi-optimal.
+
+2. **La nouveauté est une valeur**  
+   L’utilisateur ne cherche pas *le* meilleur chemin absolu, mais un chemin **différent** de ceux déjà parcourus.
+
+3. **Cas d’usage principal**  
+   Un utilisateur (souvent touriste) dispose d’un temps limité, connaît mal la ville, et souhaite voir les points importants tout en profitant d’une promenade agréable.
+
+---
+
+## 🗺️ Modélisation du problème
+
+### Graphe urbain
+
+- La ville est représentée comme un **graphe simple** (NetworkX) :
+  - **Nœuds** : intersections
+  - **Arêtes (segments)** : portions de rues
+
+## 🧠 Architecture algorithmique
+
+Le système repose sur **deux algorithmes principaux** :
+
+### 🔹 Algorithme 1 — Sélection des points intéressants
+
+Objectif : réduire l’espace de recherche pour permettre un calcul temps réel.
+
+### 🔹 Algorithme 2 — Génération et optimisation du chemin
+
+Approche :
+- Génération d’un **chemin initial** passant par les segments importants
+- Optimisation par **algorithme évolutif** avec opérations atomiques
+- Contrainte de temps gérée dynamiquement via un poids adaptatif
+
+## 🧭 Perspectives
+
+- Intégration du feedback utilisateur
+- Ajustement périodique des scores
+- Interface interactive (carte + pop-ups culturels)
+- Extension à d’autres villes
+
+---
+
+## 📝 Licence & statut
+
+Projet académique / expérimental  
+Statut : **en cours de développement**

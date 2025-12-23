@@ -27,11 +27,11 @@ def main():
     try:            
         print("\n🎨 Génération de la carte interactive...")
         
-        output_path = "projet/data/processed/clermont_graph.html"
+        output_path = "projet/data/results/clermont_graph.html"
         
         show_full_graph(
-            graph_path=graph_path,
             save_path=output_path,
+            graph_path=graph_path,
             edge_color="blue",
             edge_weight=2,
             show_fictif=True,
