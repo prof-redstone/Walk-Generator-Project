@@ -5,3 +5,6 @@ cache/
 **/__pycache__/
 *.py[cod]
 *$py.class
+
+temp.txt
+noteTom.txt
