@@ -27,31 +27,30 @@ def utm_to_latlon(x, y, transformer):
     lon, lat = transformer.transform(x, y)
     return lat, lon
 
-def show_nearby_pois(
+def filter_nearby_pois(
     center_lat: float,
     center_lon: float,
     radius_meters: float,
-    save_path: str,
-    pois_path: str = "projet/data/processed/pois.pkl",
-    zoom_start: int = 15
+    pois_path: str = "projet/data/processed/pois.pkl"
 ):
     """
-    Affiche les POIs dans un rayon autour d'un point central.
+    Filtre les POIs dans un rayon autour d'un point central.
 
     Args:
         center_lat: Latitude du centre (degrés)
         center_lon: Longitude du centre (degrés)
         radius_meters: Rayon en mètres
-        save_path: Chemin où sauvegarder la carte HTML
         pois_path: Chemin vers le fichier pois.pkl
-        zoom_start: Niveau de zoom initial
+
+    Returns:
+        nearby_pois: Liste de tuples (poi, distance)
     """
-    print("🗺️ Chargement des POIs pour visualisation...")
+    print("🗺️ Chargement des POIs pour filtrage...")
 
     # Vérifier que le fichier existe
     if not os.path.exists(pois_path):
         print(f"❌ Erreur: Le fichier POIs n'existe pas à {pois_path}")
-        return
+        return []
 
     # Charger les POIs
     with open(pois_path, 'rb') as f:
@@ -76,6 +75,26 @@ def show_nearby_pois(
             nearby_pois.append((poi, distance))
 
     print(f"📍 {len(nearby_pois)} POIs trouvés dans un rayon de {radius_meters}m")
+    return nearby_pois
+
+def show_nearby_pois_map(
+    filtered_pois,
+    center_lat: float,
+    center_lon: float,
+    save_path: str,
+    zoom_start: int = 15
+):
+    """
+    Affiche les POIs filtrés sur une carte.
+
+    Args:
+        filtered_pois: Liste de tuples (poi, distance) retournée par filter_nearby_pois
+        center_lat: Latitude du centre (degrés)
+        center_lon: Longitude du centre (degrés)
+        save_path: Chemin où sauvegarder la carte HTML
+        zoom_start: Niveau de zoom initial
+    """
+    print("🗺️ Génération de la carte...")
 
     # Créer la carte centrée sur le point
     m = folium.Map(location=[center_lat, center_lon], zoom_start=zoom_start, tiles='OpenStreetMap', max_zoom=25)
@@ -88,7 +107,7 @@ def show_nearby_pois(
     ).add_to(m)
 
     # Ajouter les POIs filtrés
-    for poi, distance in nearby_pois:
+    for poi, distance in filtered_pois:
         poi_lat = poi.geometry.y
         poi_lon = poi.geometry.x
         name = poi.get('name', 'Sans nom')
@@ -108,9 +127,28 @@ def show_nearby_pois(
     print(f"✅ Carte sauvegardée : {save_path}")
     return m
 
+def show_nearby_pois(
+    center_lat: float,
+    center_lon: float,
+    radius_meters: float,
+    save_path: str,
+    pois_path: str = "projet/data/processed/pois.pkl",
+    zoom_start: int = 15
+):
+    """
+    Fonction combinée pour filtrer et afficher les POIs (pour compatibilité).
+    """
+    filtered = filter_nearby_pois(center_lat, center_lon, radius_meters, pois_path)
+    return show_nearby_pois_map(filtered, center_lat, center_lon, save_path, zoom_start)
+
 if __name__ == "__main__":
     # Exemple d'utilisation
     center_lat = 45.7760  # Exemple: centre de Clermont-Ferrand (plein milieu de la place Jaude)
     center_lon = 3.0824
     radius = 500  # 500 mètres
-    show_nearby_pois(center_lat, center_lon, radius, "projet/data/results/nearby_pois.html")
+    
+    # Filtrer les POIs
+    filtered_pois = filter_nearby_pois(center_lat, center_lon, radius)
+    
+    # Afficher sur la carte
+    show_nearby_pois_map(filtered_pois, center_lat, center_lon, "projet/data/results/nearby_pois.html")

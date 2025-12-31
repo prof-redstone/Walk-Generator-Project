@@ -12,9 +12,9 @@ projet/
 │   ├── processed/                    # Données traitées (à générer)
 │   │   ├── graph.pkl                 # Graphe NetworkX avec tous les attributs
 │   │   ├── pois.pkl                  # Liste des POIs traités
-│   │   └── metadata.json             # Infos sur la zone, date de DL, etc.
+│   │   └── metadata.json             # Infos sur la zone, date de DL, etc. Utile dans le futur
 │   │
-│   ├── results/                      #Dossier contenant tous les fichiers de résultat d'execution de visualization (.html de folium -> carte interactive).
+│   ├── results/                      #Dossier contenant tous les fichiers de résultat d'execution de visualization ou autre (.html de folium -> carte interactive).
 │   │
 │   └── user_data/                    # Données utilisateur
 │       └── user_123_history.pkl      # Historique des chemins parcourus
@@ -22,8 +22,7 @@ projet/
 └── src/
     ├── data_acquisition/
     │   ├── download_network.py       # Téléchargement réseau routier
-    │   ├── download_pois.py          # Téléchargement des pois
-    │   └── data_validator.py         # Vérifier intégrité des données (-voir l'utilité car directement dans les 2 autres fichiers) (graph connexe, pas noeuds deg = 0)
+    │   └── download_pois.py          # Téléchargement des pois
     │
     ├── preprocessing/
     │   ├── graph_builder.py          # Construit le graphe NetworkX
@@ -31,14 +30,12 @@ projet/
     │   └── poi_processor.py          # Traite les POIs et trouve nearest_edge
     │
     ├── algorithms/
-    │   ├── algo1_point_selection.py  # Sélection des points de préselection
-    │   ├── algo2_path_generation.py  # Génération du chemin
+    │   ├── algo1.py                  # Sélection des points de préselection
+    │   ├── algo2.py                  # Génération du chemin
     │   ├── astar.py                  # A* adapté avec scores (redondance avec algo2_path_generation ? Pas forcement utile)
     │   └── atomic_operations.py      # ShortCut, Parallel, etc. (à voir si on met pas directement dans algo2_path_generation)
     │
     ├── utils/
-    │   ├── geometry.py               # Fonctions géométriques
-    │   ├── distance.py               # Calculs de distances (pas forcement utile, aprox distance avec norme L2 (pytghagore))
     │   └── scoring.py                # Produits scalaires SSV·UPV (pas forcement utile, très simple peut rester dans un autre fichier qui l'utilise)
     │
     └── visualization/
