@@ -27,16 +27,18 @@ def utm_to_latlon(x, y, transformer):
     lon, lat = transformer.transform(x, y)
     return lat, lon
 
-def filter_pois_in_path_range(
+def filter_pois_in_path_range_by_categories(
     start_lat: float,
     start_lon: float,
     end_lat: float,
     end_lon: float,
     max_distance_meters: float,
+    categories_filter: list,
     pois_path: str = "projet/data/processed/pois.pkl"
 ):
     """
-    Filtre les POIs p tels que distance(A->p) + distance(p->B) <= max_distance_meters.
+    Filtre les POIs p tels que distance(A->p) + distance(p->B) <= max_distance_meters
+    et que la catégorie du POI est dans categories_filter.
 
     Args:
         start_lat: Latitude du point A (degrés)
@@ -44,12 +46,13 @@ def filter_pois_in_path_range(
         end_lat: Latitude du point B (degrés)
         end_lon: Longitude du point B (degrés)
         max_distance_meters: Distance maximale A->p + p->B en mètres
+        categories_filter: Liste des catégories à inclure, ex: ['monument'], ['monument', 'nature'], ou ['all'] pour tout
         pois_path: Chemin vers le fichier pois.pkl
 
     Returns:
         valid_pois: Liste de tuples (poi, dist_a_to_p, dist_p_to_b, total_dist)
     """
-    print("🗺️ Chargement des POIs pour filtrage de l'algo 1...")
+    print("🗺️ Chargement des POIs pour filtrage par catégories et distance...")
 
     # Vérifier que le fichier existe
     if not os.path.exists(pois_path):
@@ -62,6 +65,16 @@ def filter_pois_in_path_range(
 
     print(f"✅ POIs chargés: {len(pois_gdf)} POIs")
 
+    # Filtrer par catégories d'abord (plus efficace)
+    if categories_filter and ('all' not in categories_filter):
+        filtered_pois_gdf = pois_gdf[pois_gdf['categories'].apply(
+            lambda cats: any(cat in categories_filter for cat in cats)
+        )]
+        print(f"📂 Filtrage par catégories {categories_filter}: {len(filtered_pois_gdf)} POIs restants")
+    else:
+        filtered_pois_gdf = pois_gdf
+        print("📂 Pas de filtrage par catégories (tous inclus)")
+
     # Initialiser le convertisseur de projection
     transformer = get_transformer()
 
@@ -69,9 +82,9 @@ def filter_pois_in_path_range(
     start_x, start_y = latlon_to_utm(start_lat, start_lon, transformer)
     end_x, end_y = latlon_to_utm(end_lat, end_lon, transformer)
 
-    # Filtrer les POIs où dist(A,p) + dist(p,B) <= max_distance_meters
+    # Filtrer par distance sur les POIs déjà filtrés par catégories
     valid_pois = []
-    for idx, poi in pois_gdf.iterrows():
+    for idx, poi in filtered_pois_gdf.iterrows():
         poi_lat = poi.geometry.y
         poi_lon = poi.geometry.x
         poi_x, poi_y = latlon_to_utm(poi_lat, poi_lon, transformer)
@@ -83,10 +96,10 @@ def filter_pois_in_path_range(
         if total_dist <= max_distance_meters:
             valid_pois.append((poi, dist_a_to_p, dist_p_to_b, total_dist))
 
-    print(f"📍 {len(valid_pois)} POIs valides pour A->p->B <= {max_distance_meters}m")
+    print(f"📍 {len(valid_pois)} POIs valides pour A->p->B <= {max_distance_meters}m avec catégories {categories_filter}")
     return valid_pois
 
-def show_pois_in_path_range_map(
+def show_pois_in_path_range_by_categories_map(
     filtered_pois,
     start_lat: float,
     start_lon: float,
@@ -99,7 +112,7 @@ def show_pois_in_path_range_map(
     Affiche les POIs filtrés sur une carte avec les points A et B.
 
     Args:
-        filtered_pois: Liste de tuples (poi, dist_a, dist_b, total) retournée par filter_pois_in_path_range
+        filtered_pois: Liste de tuples (poi, dist_a, dist_b, total) retournée par filter_pois_in_path_range_by_categories
         start_lat: Latitude du point A (degrés)
         start_lon: Longitude du point A (degrés)
         end_lat: Latitude du point B (degrés)
@@ -151,7 +164,7 @@ def show_pois_in_path_range_map(
         categories = ', '.join(poi.get('categories', []))
 
         # Créer un popup avec les infos
-        popup_text = f"<b>{name}</b><br>A->POI: {dist_a:.0f}m<br>POI->B: {dist_b:.0f}m<br>Total: {total:.0f}m<br>Catégories: {categories}"
+        popup_text = f"<b>{name}</b> Distance total: {total:.0f}m<br>Catégories: {categories}"
 
         folium.Marker(
             location=[poi_lat, poi_lon],
@@ -164,32 +177,31 @@ def show_pois_in_path_range_map(
     print(f"✅ Carte sauvegardée : {save_path}")
     return m
 
-def show_pois_in_path_range(
+def show_pois_in_path_range_by_categories(
     start_lat: float,
     start_lon: float,
     end_lat: float,
     end_lon: float,
     max_distance_meters: float,
+    categories_filter: list,
     save_path: str,
     pois_path: str = "projet/data/processed/pois.pkl",
     zoom_start: int = 13
 ):
     """
-    Fonction combinée pour filtrer et afficher les POIs (pour compatibilité).
+    Fonction combinée pour filtrer par catégories et distance, puis afficher les POIs.
     """
-    filtered = filter_pois_in_path_range(start_lat, start_lon, end_lat, end_lon, max_distance_meters, pois_path)
-    return show_pois_in_path_range_map(filtered, start_lat, start_lon, end_lat, end_lon, save_path, zoom_start)
+    filtered = filter_pois_in_path_range_by_categories(start_lat, start_lon, end_lat, end_lon, max_distance_meters, categories_filter, pois_path)
+    return show_pois_in_path_range_by_categories_map(filtered, start_lat, start_lon, end_lat, end_lon, save_path, zoom_start)
+
 
 if __name__ == "__main__":
     # Exemple d'utilisation
     start_lat = 45.7640  # Point A
     start_lon = 3.0824
-    end_lat = 45.7800    # Point B
+    end_lat = 45.7850    # Point B
     end_lon = 3.0924
-    max_dist = 2200  # en metre
-    
-    # Filtrer les POIs
-    filtered_pois = filter_pois_in_path_range(start_lat, start_lon, end_lat, end_lon, max_dist)
-    
-    # Afficher sur la carte
-    show_pois_in_path_range_map(filtered_pois, start_lat, start_lon, end_lat, end_lon, "projet/data/results/algo1_pois.html")
+    max_dist = 2800  # en metre
+    categories = ['food_drink']  # Filtre
+
+    show_pois_in_path_range_by_categories(start_lat, start_lon, end_lat, end_lon, max_dist, categories, "projet/data/results/algo1_pois.html")

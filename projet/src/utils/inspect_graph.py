@@ -1,7 +1,7 @@
 import pickle
 import os
-if os.path.exists('data/processed/graph.pkl'):
-    with open('data/processed/graph.pkl', 'rb') as f:
+if os.path.exists('projet/data/processed/graph.pkl'):
+    with open('projet/data/processed/graph.pkl', 'rb') as f:
         data = pickle.load(f)
     if isinstance(data, tuple):
         G, metadata = data
