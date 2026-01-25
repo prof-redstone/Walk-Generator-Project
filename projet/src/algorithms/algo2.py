@@ -45,13 +45,16 @@ class Config:
     # [végétalisation, accessibilité, sécurité, culture, dénivelé, cyclabilité]
     USER_PREFS = [1.0, 0.0, 0.5, 0.2, 0.0, 0.0]
     
+    # --- Contrainte de distance ---
+    MAX_WALK_DISTANCE = 3000  # Distance maximale souhaitée en mètres 
+    DISTANCE_PENALTY_FACTOR = 100.0  # Pénalité si dépassement
+    
     # --- Génération du squelette initial ---
-    SKELETON_TOP_K = 30                    # Nombre de points d'intérêt à cibler
-    SKELETON_MAX_DIST_FROM_CENTER = 2000   # Distance max du centre (en mètres) 
+    SKELETON_TOP_K = 20                    # Nombre de points d'intérêt à cibler 
     SKELETON_MIN_NODE_SCORE = 0.01         # Score minimum pour qu'un nœud soit considéré
     
     # --- Optimisation (run) ---
-    ITERATIONS = 80                        # Nombre d'itérations d'optimisation
+    ITERATIONS = 80                     # Nombre d'itérations d'optimisation
     INITIAL_PRESSURE = 0.0001              # Pression initiale (favorise l'intérêt)
     FINAL_PRESSURE = 0.5                   # Pression finale (favorise la distance courte)
     
@@ -76,24 +79,57 @@ class Config:
 
 
 class WalkGenerator:
-    """
-    Générateur de promenades optimisées.
-    Travaille avec un Simple Graph (nx.Graph) contenant des dummy nodes.
-    """
+    """Générateur de promenades optimisées."""
     
-    def __init__(self, graph_path: str = None, user_preferences: np.ndarray = None):
-        base_dir = Path(__file__).resolve().parents[2]
-        path = Path(graph_path) if graph_path else base_dir / "data" / "processed" / "graph.pkl"
-        
-        with open(path, 'rb') as f:
+    def __init__(self, graph_path: str, user_preferences: np.ndarray = None):
+        # Charger le graphe
+        with open(graph_path, 'rb') as f:
             data = pickle.load(f)
             self.G = data[0] if isinstance(data, tuple) else data
             self.metadata = data[1] if isinstance(data, tuple) and len(data) > 1 else None
         
         self.user_prefs = np.array(user_preferences) if user_preferences is not None else np.array(Config.USER_PREFS)
+        
+        # POIs préfiltrés (chargés par algo1)
+        self.prefiltered_poi_nodes = set()
+
+    def load_prefiltered_pois(self, filtered_pois_path: str):
+        """Charge les POIs préfiltrés depuis l'algo 1."""
+        print(f"[LOAD] Chargement POIs prefiltres: {filtered_pois_path}")
+        
+        with open(filtered_pois_path, 'rb') as f:
+            data = pickle.load(f)
+        
+        print(f"[INFO] {data['count']} POIs prefiltres")
+        
+        # Mapper POIs vers nodes du graphe
+        transformer = Transformer.from_crs("EPSG:4326", "EPSG:32631", always_xy=True)
+        
+        for poi in data['pois']:
+            poi_lat = poi.geometry.y
+            poi_lon = poi.geometry.x
+            poi_x, poi_y = transformer.transform(poi_lon, poi_lat)
+            
+            # Trouver le node le plus proche
+            best_node = None
+            min_dist = float('inf')
+            
+            for node, node_data in self.G.nodes(data=True):
+                if 'x' not in node_data or 'y' not in node_data:
+                    continue
+                
+                dist = np.sqrt((node_data['x'] - poi_x)**2 + (node_data['y'] - poi_y)**2)
+                if dist < min_dist:
+                    min_dist = dist
+                    best_node = node
+            
+            if best_node and min_dist < 100:
+                self.prefiltered_poi_nodes.add(best_node)
+        
+        print(f"[OK] {len(self.prefiltered_poi_nodes)} nodes associes")
 
     def get_edge_score(self, u, v) -> float:
-        """Calcule l'intérêt pur d'une arête."""
+        """Calcule l'intérêt d'une arête."""
         if not self.G.has_edge(u, v): 
             return 0.0
         
@@ -104,26 +140,26 @@ class WalkGenerator:
         return max(0.0, total_score)
 
     def evaluate_path(self, edge_path: List[Tuple[str, str]], length_penalty_factor: float) -> Tuple[float, float, float]:
-        """
-        Fitness = Total_Score - (Pression * longueur totale)
-        edge_path : liste de tuples (u, v)
-        """
+        """Fitness = Total_Score - (Pression * longueur totale) - Pénalité si dépassement"""
         total_score = 0.0
         total_length = 0.0
         
         for u, v in edge_path:
             if self.G.has_edge(u, v):
                 data = self.G[u][v]
-                
                 l = data.get('length', 0)
                 if isinstance(l, (int, float)):
                     total_length += l
-                
                 total_score += self.get_edge_score(u, v)
 
-        fitness = total_score - (length_penalty_factor * total_length)
+        # Pénalité si dépassement de la distance max
+        distance_penalty = 0.0
+        if total_length > Config.MAX_WALK_DISTANCE:
+            overshoot = total_length - Config.MAX_WALK_DISTANCE
+            distance_penalty = overshoot * Config.DISTANCE_PENALTY_FACTOR
+
+        fitness = total_score - (length_penalty_factor * total_length) - distance_penalty
         return fitness, total_score, total_length
-    
 
     def _node_path_to_edge_path(self, node_path: List[str]) -> List[Tuple[str, str]]:
         """Convertit un chemin de nodes en chemin d'edges."""
@@ -134,20 +170,15 @@ class WalkGenerator:
             if self.G.has_edge(u, v):
                 edge_path.append((u, v))
         return edge_path
-    
 
     def _edge_path_to_node_path(self, edge_path: List[Tuple[str, str]]) -> List[str]:
         """Convertit un chemin d'edges en chemin de nodes."""
         if not edge_path:
             return []
-        
-        node_path = [edge_path[0][0]]  # Premier node
+        node_path = [edge_path[0][0]]
         for u, v in edge_path:
             node_path.append(v)
-        
         return node_path
-
-    #HEURISTIQUES A* 
 
     def _weighted_cost(self, u, v, d):
         """A* favorise les segments courts ET interessants."""
@@ -161,18 +192,8 @@ class WalkGenerator:
         n2 = self.G.nodes[v]
         return np.sqrt((n1['x'] - n2['x'])**2 + (n1['y'] - n2['y'])**2)
 
-    #INITIALISATION (SQUELETTE INTIAL D'INTERET)
-
-    def _generate_high_interest_skeleton(self, start_node, end_node, 
-                                        max_dist_from_center=None, 
-                                        top_k=None,
-                                        min_node_score=None):
-        """
-        Genere un chemin initial qui passe par les 'top_k' nœuds les plus interessants.
-        Retourne un EDGE PATH : [(u1, v1), (u2, v2), ...]
-        """
-        if max_dist_from_center is None:
-            max_dist_from_center = Config.SKELETON_MAX_DIST_FROM_CENTER
+    def _generate_high_interest_skeleton(self, start_node, end_node, top_k=None, min_node_score=None):
+        """Génère un chemin initial passant par les top_k nœuds les plus intéressants."""
         if top_k is None:
             top_k = Config.SKELETON_TOP_K
         if min_node_score is None:
@@ -180,41 +201,46 @@ class WalkGenerator:
             
         print("[INIT] Construction du Squelette")
         
-        s_data = self.G.nodes[start_node]
-        e_data = self.G.nodes[end_node]
-        center_x = (s_data['x'] + e_data['x']) / 2
-        center_y = (s_data['y'] + e_data['y']) / 2
-        
-        # Identifier les nœuds intéressants (exclure les dummy nodes)
-        candidates = []
-        for n, data in self.G.nodes(data=True):
-            # Ignorer les noeuds fictif
-            if data.get('fictif', False):
-                continue
-                
-            if 'x' not in data or 'y' not in data: 
-                continue
-                
-            dist = np.sqrt((data['x'] - center_x)**2 + (data['y'] - center_y)**2)
+        # Si POIs préfiltrés disponibles, les utiliser
+        if self.prefiltered_poi_nodes:
+            print(f"[MODE] Utilisation des POIs prefiltres")
+            top_nodes = list(self.prefiltered_poi_nodes)[:top_k]
+        else:
+            print("[MODE] Mode classique - scan du graphe")
+            s_data = self.G.nodes[start_node]
+            e_data = self.G.nodes[end_node]
+            center_x = (s_data['x'] + e_data['x']) / 2
+            center_y = (s_data['y'] + e_data['y']) / 2
+            max_dist = self._dist_heuristic(start_node, end_node) * 1.5
             
-            if dist <= max_dist_from_center:
-                node_score = 0
-                # Score = maximum des scores des edges adjacentes
-                for neighbor in self.G.neighbors(n):
-                    s = self.get_edge_score(n, neighbor)
-                    node_score = max(node_score, s)
+            candidates = []
+            for n, data in self.G.nodes(data=True):
+                if data.get('fictif', False):
+                    continue
+                if 'x' not in data or 'y' not in data: 
+                    continue
+                    
+                dist = np.sqrt((data['x'] - center_x)**2 + (data['y'] - center_y)**2)
                 
-                if node_score > min_node_score: 
-                    candidates.append((n, node_score))
+                if dist <= max_dist:
+                    node_score = 0
+                    for neighbor in self.G.neighbors(n):
+                        s = self.get_edge_score(n, neighbor)
+                        node_score = max(node_score, s)
+                    
+                    if node_score > min_node_score: 
+                        candidates.append((n, node_score))
+            
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            top_nodes = [x[0] for x in candidates[:top_k]]
         
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        top_nodes = [x[0] for x in candidates[:top_k]]
-        
+        # Ajouter start et end
         if start_node not in top_nodes: 
             top_nodes.insert(0, start_node)
         if end_node not in top_nodes: 
             top_nodes.append(end_node)
         
+        # Dédupliquer
         unique_nodes = []
         seen = set()
         for node in top_nodes:
@@ -223,9 +249,9 @@ class WalkGenerator:
                 seen.add(node)
         top_nodes = unique_nodes
 
-        print(f"   [TARGET] {len(top_nodes)} Points d'interet majeurs identifies.")
+        print(f"   [TARGET] {len(top_nodes)} Points d'interet identifies")
 
-        # Ordoner les points (plus proche voisin)
+        # Ordonner (plus proche voisin)
         ordered_path = [start_node]
         unvisited = set(top_nodes)
         if start_node in unvisited: 
@@ -256,7 +282,7 @@ class WalkGenerator:
         
         ordered_path.append(end_node)
 
-        # Relier les points avec shortest_path
+        # Relier avec shortest_path
         full_node_path = []
         for i in range(len(ordered_path) - 1):
             u = ordered_path[i]
@@ -273,19 +299,14 @@ class WalkGenerator:
                 print(f"   [WARN] Pas de chemin entre {u} et {v}")
                 continue
 
-        # Conversion Node Path -> Edge Path
         return self._node_path_to_edge_path(full_node_path)
 
-    # --- OPERATIONS ---
-
     def op_shortcut(self, edge_path: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
-        """Opération Shortcut : raccourcit le chemin en sautant des segments."""
+        """Opération Shortcut : raccourcit le chemin."""
         if len(edge_path) < Config.SHORTCUT_MIN_PATH_LENGTH: 
             return edge_path
         
-        # Convertir temporairement en node path pour A*
         node_path = self._edge_path_to_node_path(edge_path)
-        
         idx_x = random.randint(0, len(node_path) - 4)
         jump = np.random.poisson(lam=Config.SHORTCUT_POISSON_LAMBDA) 
         idx_y = min(idx_x + max(3, jump), len(node_path) - 1)
@@ -296,24 +317,20 @@ class WalkGenerator:
                 heuristic=self._dist_heuristic, weight=self._weighted_cost
             )
             new_segment_edges = self._node_path_to_edge_path(new_segment_nodes)
-            
-            # Reconstituer le chemin
             before = edge_path[:idx_x]
             after = edge_path[idx_y+1:] if idx_y+1 < len(edge_path) else []
-            
             return before + new_segment_edges + after
         except nx.NetworkXNoPath:
             return edge_path
 
     def op_parallel(self, edge_path: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
-        """Opération Parallel : explore une rue parallèle intéressante."""
+        """Opération Parallel : explore une rue parallèle."""
         node_path = self._edge_path_to_node_path(edge_path)
         path_set = set(node_path)
         candidates = []
         scan_size = min(Config.PARALLEL_SCAN_SAMPLE_SIZE, len(node_path))
         scan_indices = random.sample(range(len(node_path)), scan_size)
         
-        # Trouver les edges adjacentes hors du chemin
         for idx in scan_indices:
             node = node_path[idx]
             for neighbor in self.G.neighbors(node):
@@ -328,7 +345,6 @@ class WalkGenerator:
         candidates.sort(key=lambda x: x[0], reverse=True)
         _, n1, n2 = candidates[0]
         
-        # Trouver les indices les plus proches dans le chemin
         def get_closest_idx(target_node):
             best_i, min_d = -1, float('inf')
             t_data = self.G.nodes[target_node]
@@ -348,37 +364,28 @@ class WalkGenerator:
         try:
             seg_to_nodes = nx.shortest_path(self.G, node_path[idx_n3], n1, weight='length')
             seg_from_nodes = nx.shortest_path(self.G, n2, node_path[idx_n4], weight='length')
-            
-            # Conversion en edges
             seg_to_edges = self._node_path_to_edge_path(seg_to_nodes)
             seg_from_edges = self._node_path_to_edge_path(seg_from_nodes)
-            
-            # Ajouter l'edge parallèle
             parallel_edge = [(n1, n2)]
-            
             return edge_path[:idx_n3] + seg_to_edges + parallel_edge + seg_from_edges + edge_path[idx_n4+1:]
         except nx.NetworkXNoPath:
             return edge_path
 
-    def run(self, start_node, end_node, 
-            iterations=None, 
-            initial_pressure=None, 
-            final_pressure=None):
-        """
-        Lance l'optimisation du parcours.
-        Retourne un EDGE PATH : [(u1, v1), (u2, v2), ...]
-        """
+    def run(self, start_node, end_node, iterations=None, initial_pressure=None, final_pressure=None, max_distance=None):
+        """Lance l'optimisation du parcours."""
         if iterations is None:
             iterations = Config.ITERATIONS
         if initial_pressure is None:
             initial_pressure = Config.INITIAL_PRESSURE
         if final_pressure is None:
             final_pressure = Config.FINAL_PRESSURE
+        if max_distance is not None:
+            Config.MAX_WALK_DISTANCE = max_distance
             
         current_path = self._generate_high_interest_skeleton(start_node, end_node)
         
         if not current_path or len(current_path) < 1:
-            print("[ERROR] Echec generation squelette, repli sur shortest path")
+            print("[ERROR] Echec squelette, shortest path")
             try:
                 node_path = nx.shortest_path(self.G, start_node, end_node, weight='length')
                 current_path = self._node_path_to_edge_path(node_path)
@@ -387,7 +394,6 @@ class WalkGenerator:
 
         current_pressure = initial_pressure
         _, c_score, c_len = self.evaluate_path(current_path, current_pressure)
-        
         print(f"[START] Edges: {len(current_path)} | Len: {c_len:.0f}m | Score: {c_score:.1f}")
 
         step = (final_pressure - initial_pressure) / iterations
@@ -416,17 +422,11 @@ class WalkGenerator:
                 print(f"   [OK] [{i:03d}] {op:8s} | Edges: {len(cand_path)} | Len: {cand_len:.0f}m ({diff_len:+.0f}) | Score: {cand_score:.1f}")
         
         return current_path
-    
-
-# VISUALISATION (HTML)
 
 
 def save_path_to_html(G, edge_path, filepath):
-    """
-    Génère une carte HTML interactive du parcours.
-    edge_path : liste de tuples (u, v)
-    """
-    print(f"\n[MAP] Generation de la carte HTML vers {filepath}...")
+    """Génère une carte HTML du parcours."""
+    print(f"[MAP] Generation carte HTML: {filepath}")
     
     graph_crs = G.graph.get('crs', "EPSG:32631") 
     transformer = Transformer.from_crs(graph_crs, "EPSG:4326", always_xy=True)
@@ -436,79 +436,55 @@ def save_path_to_html(G, edge_path, filepath):
         lon, lat = transformer.transform(node['x'], node['y'])
         return lat, lon
 
-    # Convertir edge path en coordonnées
     route_coords = []
     for u, v in edge_path:
-        if not route_coords:  # Premier point
+        if not route_coords:
             route_coords.append(get_latlon(u))
         route_coords.append(get_latlon(v))
 
     if not route_coords:
-        print("[ERROR] Chemin vide, pas de carte.")
+        print("[ERROR] Chemin vide")
         return
 
     start_lat, start_lon = route_coords[0]
     m = folium.Map(location=[start_lat, start_lon], zoom_start=14, tiles='OpenStreetMap')
-
-    folium.PolyLine(
-        route_coords,
-        color="blue",
-        weight=5,
-        opacity=0.7,
-        tooltip="Promenade Generee"
-    ).add_to(m)
-
+    folium.PolyLine(route_coords, color="blue", weight=5, opacity=0.7, tooltip="Promenade").add_to(m)
     folium.Marker(route_coords[0], popup="Depart", icon=folium.Icon(color="green", icon="play")).add_to(m)
     folium.Marker(route_coords[-1], popup="Arrivee", icon=folium.Icon(color="red", icon="stop")).add_to(m)
+    m.save(filepath)
+    print(f"[OK] Carte sauvegardee")
 
-    abs_filepath = os.path.abspath(filepath)
-    os.makedirs(os.path.dirname(abs_filepath), exist_ok=True)
-    m.save(abs_filepath)
-    print(f"[SUCCESS] Carte sauvegardee : {abs_filepath}")
-
-# MAIN
 
 if __name__ == "__main__":
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../projet/data"))
+    GRAPH_PATH = "../../data/processed/graph.pkl"
+    FILTERED_POIS_PATH = "../../data/processed/filtered_pois_for_algo2.pkl"
+    OUTPUT_HTML = "../../data/results/promenade_generee.html"
     
-    GRAPH_PATH = os.path.join(DATA_DIR, "processed/graph.pkl")
-    OUTPUT_HTML = os.path.join(DATA_DIR, "results/promenade_generee.html")
+    MAX_DISTANCE = 3000  # Distance max souhaitée en mètres
     
-    print(f"[INIT] Dossier de base script : {BASE_DIR}")
-    print(f"[INIT] Dossier Data cible : {DATA_DIR}")
-    print(f"[INIT] Configuration:")
-    print(f"       - Iterations: {Config.ITERATIONS}")
-    print(f"       - Pressure: {Config.INITIAL_PRESSURE} -> {Config.FINAL_PRESSURE}")
-    print(f"       - Top K waypoints: {Config.SKELETON_TOP_K}")
-    print(f"       - User prefs: {Config.USER_PREFS}")
+    print(f"[INIT] Algo 3 - Walk Generator")
     
     try:
         generator = WalkGenerator(GRAPH_PATH)
+        generator.load_prefiltered_pois(FILTERED_POIS_PATH)
         
         all_nodes = list(generator.G.nodes())
-        if not all_nodes: 
-            raise ValueError("Le graphe est vide !")
-
         start_node = random.choice(all_nodes)
         
         possible_ends = [n for n in all_nodes 
                         if Config.MIN_DISTANCE_START_END < generator._dist_heuristic(start_node, n) < Config.MAX_DISTANCE_START_END]
-        if not possible_ends:
-            end_node = random.choice(all_nodes)
-        else:
-            end_node = random.choice(possible_ends)
+        end_node = random.choice(possible_ends) if possible_ends else random.choice(all_nodes)
 
-        print(f"[INFO] Trajet demande : {start_node} -> {end_node}")
+        print(f"[INFO] Trajet: {start_node} -> {end_node}")
 
-        final_edge_path = generator.run(start_node, end_node)
+        final_edge_path = generator.run(start_node, end_node, max_distance=MAX_DISTANCE)
         
         if final_edge_path:
             save_path_to_html(generator.G, final_edge_path, OUTPUT_HTML)
         else:
-            print("[FAIL] Aucun chemin genere.")
+            print("[FAIL] Aucun chemin genere")
         
     except Exception as e:
-        print(f"[CRITICAL ERROR] : {e}")
+        print(f"[ERROR] {e}")
         import traceback
         traceback.print_exc()

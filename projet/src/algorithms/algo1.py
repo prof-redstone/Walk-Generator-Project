@@ -52,28 +52,28 @@ def filter_pois_in_path_range_by_categories(
     Returns:
         valid_pois: Liste de tuples (poi, dist_a_to_p, dist_p_to_b, total_dist)
     """
-    print("🗺️ Chargement des POIs pour filtrage par catégories et distance...")
+    print(" Chargement des POIs pour filtrage par catégories et distance...")
 
     # Vérifier que le fichier existe
     if not os.path.exists(pois_path):
-        print(f"❌ Erreur: Le fichier POIs n'existe pas à {pois_path}")
+        print(f" Erreur: Le fichier POIs n'existe pas à {pois_path}")
         return []
 
     # Charger les POIs
     with open(pois_path, 'rb') as f:
         pois_gdf = pickle.load(f)
 
-    print(f"✅ POIs chargés: {len(pois_gdf)} POIs")
+    print(f" POIs chargés: {len(pois_gdf)} POIs")
 
     # Filtrer par catégories d'abord (plus efficace)
     if categories_filter and ('all' not in categories_filter):
         filtered_pois_gdf = pois_gdf[pois_gdf['categories'].apply(
             lambda cats: any(cat in categories_filter for cat in cats)
         )]
-        print(f"📂 Filtrage par catégories {categories_filter}: {len(filtered_pois_gdf)} POIs restants")
+        print(f" Filtrage par catégories {categories_filter}: {len(filtered_pois_gdf)} POIs restants")
     else:
         filtered_pois_gdf = pois_gdf
-        print("📂 Pas de filtrage par catégories (tous inclus)")
+        print(" Pas de filtrage par catégories (tous inclus)")
 
     # Initialiser le convertisseur de projection
     transformer = get_transformer()
@@ -96,7 +96,7 @@ def filter_pois_in_path_range_by_categories(
         if total_dist <= max_distance_meters:
             valid_pois.append((poi, dist_a_to_p, dist_p_to_b, total_dist))
 
-    print(f"📍 {len(valid_pois)} POIs valides pour A->p->B <= {max_distance_meters}m avec catégories {categories_filter}")
+    print(f" {len(valid_pois)} POIs valides pour A->p->B <= {max_distance_meters}m avec catégories {categories_filter}")
     return valid_pois
 
 def show_pois_in_path_range_by_categories_map(
@@ -120,7 +120,7 @@ def show_pois_in_path_range_by_categories_map(
         save_path: Chemin où sauvegarder la carte HTML
         zoom_start: Niveau de zoom initial
     """
-    print("🗺️ Génération de la carte...")
+    print("Génération de la carte...")
 
     # Initialiser le convertisseur pour la distance directe
     transformer = get_transformer()
@@ -174,26 +174,90 @@ def show_pois_in_path_range_by_categories_map(
 
     # Sauvegarder la carte
     m.save(save_path)
-    print(f"✅ Carte sauvegardée : {save_path}")
+    print(f" Carte sauvegardée : {save_path}")
     return m
 
-def show_pois_in_path_range_by_categories(
+def save_filtered_pois_to_pkl(
+    filtered_pois,
     start_lat: float,
     start_lon: float,
     end_lat: float,
     end_lon: float,
     max_distance_meters: float,
     categories_filter: list,
-    save_path: str,
+    save_path: str
+):
+    """
+    Sauvegarde les POIs filtrés dans un fichier pickle pour utilisation par l'algo 2.
+    
+    Args:
+        filtered_pois: Liste de tuples (poi, dist_a, dist_b, total)
+        start_lat, start_lon: Coordonnées du point A
+        end_lat, end_lon: Coordonnées du point B
+        max_distance_meters: Distance max utilisée
+        categories_filter: Catégories filtrées
+        save_path: Chemin de sauvegarde du pkl
+    """
+    print(f" Sauvegarde des POIs filtrés vers {save_path}...")
+    
+    # Extraire juste les POIs (sans les distances) pour alléger
+    poi_list = [poi for poi, _, _, _ in filtered_pois]
+    
+    data = {
+        'pois': poi_list,
+        'start_coords': (start_lat, start_lon),
+        'end_coords': (end_lat, end_lon),
+        'max_distance': max_distance_meters,
+        'categories': categories_filter,
+        'count': len(poi_list)
+    }
+    
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    
+    with open(save_path, 'wb') as f:
+        pickle.dump(data, f)
+    
+    print(f"Sauvegardé: {len(poi_list)} POIs dans {save_path}")
+    return data
+
+def filter_and_save_pois(
+    start_lat: float,
+    start_lon: float,
+    end_lat: float,
+    end_lon: float,
+    max_distance_meters: float,
+    categories_filter: list,
+    pkl_save_path: str,
+    map_save_path: str = None,
     pois_path: str = "projet/data/processed/pois.pkl",
     zoom_start: int = 13
 ):
     """
-    Fonction combinée pour filtrer par catégories et distance, puis afficher les POIs.
+    Fonction complète : filtre les POIs, sauvegarde le PKL, et génère optionnellement une carte.
+    
+    Returns:
+        dict: Données sauvegardées dans le pkl
     """
-    filtered = filter_pois_in_path_range_by_categories(start_lat, start_lon, end_lat, end_lon, max_distance_meters, categories_filter, pois_path)
-    return show_pois_in_path_range_by_categories_map(filtered, start_lat, start_lon, end_lat, end_lon, save_path, zoom_start)
-
+    # Filtrer les POIs
+    filtered = filter_pois_in_path_range_by_categories(
+        start_lat, start_lon, end_lat, end_lon, 
+        max_distance_meters, categories_filter, pois_path
+    )
+    
+    # Sauvegarder en PKL
+    pkl_data = save_filtered_pois_to_pkl(
+        filtered, start_lat, start_lon, end_lat, end_lon,
+        max_distance_meters, categories_filter, pkl_save_path
+    )
+    
+    # Générer la carte si demandé
+    if map_save_path:
+        show_pois_in_path_range_by_categories_map(
+            filtered, start_lat, start_lon, end_lat, end_lon,
+            map_save_path, zoom_start
+        )
+    
+    return pkl_data
 
 if __name__ == "__main__":
     # Exemple d'utilisation
@@ -204,4 +268,9 @@ if __name__ == "__main__":
     max_dist = 2800  # en metre
     categories = ['food_drink']  # Filtre
 
-    show_pois_in_path_range_by_categories(start_lat, start_lon, end_lat, end_lon, max_dist, categories, "projet/data/results/algo1_pois.html")
+    filter_and_save_pois(
+        start_lat, start_lon, end_lat, end_lon, max_dist, categories,
+        pkl_save_path="../../data/processed/filtered_pois_for_algo2.pkl",
+        map_save_path="../../data/results/algo1_pois.html",
+        pois_path="../../data/processed/pois.pkl"
+    )
