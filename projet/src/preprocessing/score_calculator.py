@@ -80,22 +80,8 @@ def load_pois(filepath: str = None):
         return []
     
     with open(filepath, 'rb') as f:
-        pois_gdf = pickle.load(f)
-    
-    # Convertir GeoDataFrame en liste de dictionnaires pour faciliter l'usage
-    pois_list = []
-    
-    for idx, row in pois_gdf.iterrows():
-        poi_dict = {
-            'name': row.get('name'),
-            'x': row.geometry.x,
-            'y': row.geometry.y,
-            'categories': row.get('categories', []),  # Liste des categories
-            'nearest_edge': row.get('nearest_edge')
-        }
-        pois_list.append(poi_dict)
-    
-    return pois_list
+        pois = pickle.load(f)
+    return pois
 
 
 def get_edge_geometry(G: nx.Graph, u: int, v: int, edge_data: dict) -> LineString:
@@ -145,9 +131,8 @@ def calculate_vegetation_score(G: nx.Graph, u: int, v: int, edge_data: dict,
     nature_count = 0
     
     for poi in pois:
-        # Filtrer les POIs contenant 'nature' dans leurs categories
-        categories = poi.get('categories', [])
-        if 'nature' not in categories:
+        # Filtrer les POIs de categorie nature
+        if poi.get('category') != 'nature':
             continue
         
         poi_point = Point(poi['x'], poi['y'])
@@ -310,14 +295,11 @@ def calculate_culture_score(G: nx.Graph, u: int, v: int, edge_data: dict,
     
     # Compter les POIs culturels a proximite
     cultural_count = 0
-    cultural_categories = ['monuments', 'culture', 'religious']
+    cultural_categories = ['monument', 'tourism', 'heritage']
     
     for poi in pois:
-        # Filtrer les POIs culturels (qui ont au moins une categorie culturelle)
-        categories = poi.get('categories', [])
-        has_cultural = any(cat in cultural_categories for cat in categories)
-        
-        if not has_cultural:
+        # Filtrer les POIs culturels
+        if poi.get('category') not in cultural_categories:
             continue
         
         poi_point = Point(poi['x'], poi['y'])
