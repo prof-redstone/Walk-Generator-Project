@@ -17,7 +17,7 @@ class Config:
     MAX_WALK_DISTANCE = 3000
     DISTANCE_PENALTY_FACTOR = 100.0
     
-    SKELETON_TOP_K = 10
+    SKELETON_TOP_K = 20
     SKELETON_MIN_NODE_SCORE = 0.01
     
     ITERATIONS = 1000
@@ -454,7 +454,7 @@ class WalkGenerator:
         
         return edge_path
 
-    def run(self, start_node, end_node,iterations=None,initial_pressure=None,final_pressure=None,max_distance=None):
+    def run(self, start_node, end_node,iterations=None,initial_pressure=None,final_pressure=None,max_distance=None,skeleton_output_html=None):
         """Lance l'optimisation du parcours."""
 
         if iterations is None:
@@ -475,6 +475,11 @@ class WalkGenerator:
                 current_path = self._shortest_edge_path(start_node, end_node)
             except:
                 return []
+
+        # Sauvegarder le squelette initial si demandé
+        if skeleton_output_html:
+            print(f"[SKELETON] Génération de la carte du squelette initial...")
+            save_path_to_html(self.G, current_path, skeleton_output_html)
 
         current_pressure = initial_pressure
         _, c_score, c_len = self.evaluate_path(current_path, current_pressure)
@@ -605,39 +610,80 @@ def save_path_to_html(G, edge_path, filepath):
 
 
 if __name__ == "__main__":
+    # Chemins des fichiers
     GRAPH_PATH = "../../data/processed/graph.pkl"
     FILTERED_POIS_PATH = "../../data/processed/filtered_pois_for_algo2.pkl"
     OUTPUT_HTML = "../../data/results/promenade_generee.html"
+    SKELETON_HTML = "../../data/results/squelette_initial.html"
     
-    MAX_DISTANCE = 3000
+    # Paramètres de test
+    MAX_WALK_VAL = 3000
     
     print("[INIT] Algo 2 - Walk Generator")
     
     try:
         generator = WalkGenerator(GRAPH_PATH)
         
+        # Chargement optionnel des POIs préfiltrés
         if os.path.exists(FILTERED_POIS_PATH):
             generator.load_prefiltered_pois(FILTERED_POIS_PATH)
         else:
             print("[INFO] Pas de POIs prefiltres, mode classique")
         
-        all_nodes = list(generator.G.nodes())
-        start_node = random.choice(all_nodes)
+        # --- SÉLECTION START / END NORMALE ---
         
-        possible_ends = [
-            n for n in all_nodes 
-            if Config.MIN_DISTANCE_START_END < generator._dist_heuristic(start_node, n) < Config.MAX_DISTANCE_START_END
-        ]
-        end_node = random.choice(possible_ends) if possible_ends else random.choice(all_nodes)
+        # 1. Récupérer tous les noeuds valides (avec coordonnées x, y)
+        valid_nodes = [n for n, d in generator.G.nodes(data=True) if 'x' in d and 'y' in d]
+        
+        if not valid_nodes:
+            raise ValueError("Le graphe ne contient aucun noeud avec des coordonnées 'x' et 'y'.")
 
-        print(f"[INFO] Trajet: {start_node} -> {end_node}")
+        # 2. Choisir un point de départ au hasard
+        start_node = random.choice(valid_nodes)
+        s_data = generator.G.nodes[start_node]
+        
+        # 3. Choisir un point d'arrivée qui respecte une distance min/max (vol d'oiseau)
+        possible_ends = []
+        
+        print(f"[SEARCH] Recherche d'une destination entre {Config.MIN_DISTANCE_START_END}m et {Config.MAX_DISTANCE_START_END}m...")
 
-        final_edge_path = generator.run(start_node, end_node, max_distance=MAX_DISTANCE)
+        for node in valid_nodes:
+            if node == start_node:
+                continue
+                
+            n_data = generator.G.nodes[node]
+            # Distance euclidienne
+            dist = np.sqrt((s_data['x'] - n_data['x'])**2 + (s_data['y'] - n_data['y'])**2)
+            
+            if Config.MIN_DISTANCE_START_END <= dist <= Config.MAX_DISTANCE_START_END:
+                possible_ends.append((node, dist))
+        
+        if possible_ends:
+            end_node, dist_vol_oiseau = random.choice(possible_ends)
+            print(f"[INFO] Trajet généré aléatoirement.")
+            print(f"       Départ : {start_node}")
+            print(f"       Arrivée: {end_node}")
+            print(f"       Dist. vol d'oiseau: {dist_vol_oiseau:.0f}m")
+        else:
+            # Fallback si le graphe est trop petit ou trop dense
+            print("[WARN] Aucune destination trouvée dans les contraintes, choix purement aléatoire.")
+            end_node = random.choice([n for n in valid_nodes if n != start_node])
+            dist_vol_oiseau = generator._dist_heuristic(start_node, end_node)
+            print(f"       Arrivée (fallback): {end_node} ({dist_vol_oiseau:.0f}m)")
+
+        # --- Lancement de l'algo ---
+
+        final_edge_path = generator.run(
+            start_node, 
+            end_node, 
+            max_distance=MAX_WALK_VAL, 
+            skeleton_output_html=SKELETON_HTML
+        )
         
         if final_edge_path:
             save_path_to_html(generator.G, final_edge_path, OUTPUT_HTML)
         else:
-            print("[FAIL] Aucun chemin genere")
+            print("[FAIL] Aucun chemin généré")
         
     except Exception as e:
         print(f"[ERROR] {e}")
